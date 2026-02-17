@@ -1,6 +1,6 @@
 {
   "required": true,
-  "package": "net.plaaasma.vortexmod.mixins",
+  "package": "za.co.infernos.vortexmod.mixins",
   "compatibilityLevel": "JAVA_21",
   "client": [
     "client.LevelRendererMixin"

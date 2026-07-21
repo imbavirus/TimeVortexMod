@@ -36,3 +36,10 @@ config="mixins.vortexmod.json"
     ordering="NONE"
     side="BOTH"
 
+[[dependencies.${mod_id}]]
+    modId="computercraft"
+    type="optional"
+    versionRange="[1.111.0,)"
+    ordering="NONE"
+    side="BOTH"
+

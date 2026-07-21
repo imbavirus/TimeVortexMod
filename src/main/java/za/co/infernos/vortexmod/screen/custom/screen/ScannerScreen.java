@@ -49,20 +49,19 @@ public class ScannerScreen extends AbstractContainerScreen<ScannerMenu> {
         BlockPos blockPosBack = new BlockPos(blockEntity.data.get(4), blockEntity.data.get(5), blockEntity.data.get(6));
         ServerLevel decidedDimension = null;
 
-        System.out.println(blockEntity.toString());
-
-        if (blockEntity.data.get(8) == 1){
-            //blockEntity.data.set(7, 0);
+        if (blockEntity.data.get(8) == 1 && blockEntity.getLevel() != null) {
             MinecraftServer minecraftserver = blockEntity.getLevel().getServer();
-            Iterable<ServerLevel> serverLevels = minecraftserver.getAllLevels();
-
-            for (ServerLevel cLevel : serverLevels) {
-                if (cLevel.dimension().location().getPath().hashCode() == blockEntity.data.get(7)) {
-                    decidedDimension = cLevel;
-                    break;
+            if (minecraftserver != null) {
+                for (ServerLevel cLevel : minecraftserver.getAllLevels()) {
+                    if (cLevel.dimension().location().getPath().hashCode() == blockEntity.data.get(7)) {
+                        decidedDimension = cLevel;
+                        break;
+                    }
                 }
             }
+        }
 
+        if (decidedDimension != null) {
             //Top
             guiGraphics.renderFakeItem(decidedDimension.getBlockState(blockPos.above()).getBlock().asItem().getDefaultInstance(),
                     menu.slots.get(0).x + x, menu.slots.get(0).y + y);
@@ -79,8 +78,7 @@ public class ScannerScreen extends AbstractContainerScreen<ScannerMenu> {
             // Bottom
             guiGraphics.renderFakeItem(decidedDimension.getBlockState(blockPosBack.below()).getBlock().asItem().getDefaultInstance(),
                     menu.slots.get(5).x + x, menu.slots.get(5).y + y);
-        }
-        else {
+        } else {
             for (int i = 0; i < 6; i++) {
                 guiGraphics.renderFakeItem(Items.BARRIER.getDefaultInstance(), menu.slots.get(i).x + x, menu.slots.get(i).y + y);
             }

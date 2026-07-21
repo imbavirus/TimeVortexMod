@@ -79,7 +79,7 @@ public class ScannerBlockEntity extends BlockEntity implements MenuProvider {
 
             @Override
             public int getCount() {
-                return 1;
+                return 9;
             }
         };
 

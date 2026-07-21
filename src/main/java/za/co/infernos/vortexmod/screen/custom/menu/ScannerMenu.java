@@ -20,7 +20,7 @@ public class ScannerMenu extends AbstractContainerMenu {
     private final ContainerData data;
 
     public ScannerMenu(int pContainerId, Inventory inv, RegistryFriendlyByteBuf extraData) {
-        this(pContainerId, inv, inv.player.level().getBlockEntity(extraData.readBlockPos()), new SimpleContainerData(1));
+        this(pContainerId, inv, inv.player.level().getBlockEntity(extraData.readBlockPos()), new SimpleContainerData(9));
     }
 
     public ScannerMenu(int pContainerId, Inventory inv, BlockEntity entity, ContainerData data) {

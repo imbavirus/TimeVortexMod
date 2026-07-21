@@ -168,7 +168,9 @@ public class ScannerBlock extends FaceAttachedHorizontalDirectionalBlockEntity {
                                 }
 
                                 BlockPos blockExitPos = new BlockPos(vortexInterfaceBlockEntity.data.get(6), vortexInterfaceBlockEntity.data.get(7), vortexInterfaceBlockEntity.data.get(8));
-                                tardisEntity = (TardisEntity) targetDimension.getEntity(vortexInterfaceBlockEntity.getExtUUID());
+                                if (targetDimension.getEntity(vortexInterfaceBlockEntity.getExtUUID()) instanceof TardisEntity foundTardis) {
+                                    tardisEntity = foundTardis;
+                                }
                                 if (tardisEntity != null) {
                                     if (!tardisEntity.isInFlight() && !tardisEntity.isRemat()) {
                                         int yaw = (int) tardisEntity.getYRot();
@@ -196,6 +198,8 @@ public class ScannerBlock extends FaceAttachedHorizontalDirectionalBlockEntity {
                                 } else {
                                     decidedDimension = vortexDimension;
                                     targetExit = new Vec3(random.nextInt(1000000) - 500000, -100, random.nextInt(1000000) - 500000);
+                                    blockTargetExit = new BlockPos((int) targetExit.x, -100, (int) targetExit.z);
+                                    blockTargetBack = blockTargetExit;
                                 }
 
                                 setVars = true;
@@ -204,45 +208,51 @@ public class ScannerBlock extends FaceAttachedHorizontalDirectionalBlockEntity {
                     }
                 }
 
-                String status = "Safe to exit, outside block: ";
-                ChatFormatting statusFormat = ChatFormatting.GREEN;
+                if (blockTargetExit != null && targetExit != null && decidedDimension != null) {
+                    String status = "Safe to exit, outside block: ";
+                    ChatFormatting statusFormat = ChatFormatting.GREEN;
 
-                if (!((decidedDimension.getBlockState(blockTargetExit.below()).getBlock() != Blocks.AIR && decidedDimension.getBlockState(blockTargetExit.below()).getBlock() != Blocks.LAVA && decidedDimension.getBlockState(blockTargetExit.below()).getBlock() != Blocks.WATER) && decidedDimension.getBlockState(blockTargetExit).getBlock() == Blocks.AIR && decidedDimension.getBlockState(blockTargetExit.above()).getBlock() == Blocks.AIR) || decidedDimension == vortexDimension) {
-                    status = "Not safe to exit, outside block: ";
-                    statusFormat = ChatFormatting.RED;
+                    if (!((decidedDimension.getBlockState(blockTargetExit.below()).getBlock() != Blocks.AIR && decidedDimension.getBlockState(blockTargetExit.below()).getBlock() != Blocks.LAVA && decidedDimension.getBlockState(blockTargetExit.below()).getBlock() != Blocks.WATER) && decidedDimension.getBlockState(blockTargetExit).getBlock() == Blocks.AIR && decidedDimension.getBlockState(blockTargetExit.above()).getBlock() == Blocks.AIR) || decidedDimension == vortexDimension) {
+                        status = "Not safe to exit, outside block: ";
+                        statusFormat = ChatFormatting.RED;
+                    }
+
+                    String blockString = decidedDimension.getBlockState(blockTargetExit.below()).getBlock().getName().getString() + "\n";
+
+                    String dimensionString = decidedDimension.dimension().location().getPath() + "\n";
+
+                    String coordinateString = targetExit.x + " " + targetExit.y + " " + targetExit.z;
+
+                    pPlayer.displayClientMessage(Component.literal("Scan Results:\n").withStyle(ChatFormatting.GRAY).append(
+                            Component.literal(status).withStyle(statusFormat).append(
+                                    Component.literal(blockString).withStyle(ChatFormatting.GRAY).append(
+                                            Component.literal(dimensionString).withStyle(ChatFormatting.AQUA).append(
+                                                    Component.literal(coordinateString).withStyle(ChatFormatting.GOLD)
+                                            )
+                                    )
+                            )
+                    ), false);
+
+                    sblockEntity.data.set(1, blockTargetExit.getX());
+                    sblockEntity.data.set(2, blockTargetExit.getY());
+                    sblockEntity.data.set(3, blockTargetExit.getZ());
+
+                    BlockPos back = blockTargetBack != null ? blockTargetBack : blockTargetExit;
+                    sblockEntity.data.set(4, back.getX());
+                    sblockEntity.data.set(5, back.getY());
+                    sblockEntity.data.set(6, back.getZ());
+
+                    sblockEntity.data.set(7, decidedDimension.dimension().location().getPath().hashCode());
+                    sblockEntity.data.set(8, 1);
+                } else {
+                    sblockEntity.data.set(8, 0);
+                    pPlayer.displayClientMessage(Component.literal("Scanner could not find a Vortex Interface nearby.").withStyle(ChatFormatting.RED), true);
                 }
-
-                String blockString = decidedDimension.getBlockState(blockTargetExit.below()).getBlock().getName().getString() + "\n";
-
-                String dimensionString = decidedDimension.dimension().location().getPath() + "\n";
-
-                String coordinateString = targetExit.x + " " + targetExit.y + " " + targetExit.z;
-
-                pPlayer.displayClientMessage(Component.literal("Scan Results:\n").withStyle(ChatFormatting.GRAY).append(
-                        Component.literal(status).withStyle(statusFormat).append(
-                                Component.literal(blockString).withStyle(ChatFormatting.GRAY).append(
-                                        Component.literal(dimensionString).withStyle(ChatFormatting.AQUA).append(
-                                                Component.literal(coordinateString).withStyle(ChatFormatting.GOLD)
-                                        )
-                                )
-                        )
-                ), false);
             }
             else {
+                sblockEntity.data.set(8, 0);
                 pPlayer.displayClientMessage(Component.literal("Scanner is not in the TARDIS dimension.").withStyle(ChatFormatting.RED), true);
             }
-
-            sblockEntity.data.set(1, blockTargetExit.getX());
-            sblockEntity.data.set(2, blockTargetExit.getY());
-            sblockEntity.data.set(3, blockTargetExit.getZ());
-
-            sblockEntity.data.set(4, blockTargetBack.getX());
-            sblockEntity.data.set(5, blockTargetBack.getY());
-            sblockEntity.data.set(6, blockTargetBack.getZ());
-
-            sblockEntity.data.set(7, decidedDimension.dimension().location().getPath().hashCode());
-            sblockEntity.data.set(8, 1);
-            System.out.println(sblockEntity.toString());
 
             if (pPlayer instanceof ServerPlayer serverPlayer) {
                 serverPlayer.openMenu(sblockEntity, (RegistryFriendlyByteBuf buf) -> buf.writeBlockPos(pPos));

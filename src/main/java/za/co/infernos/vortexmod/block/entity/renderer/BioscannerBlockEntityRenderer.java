@@ -75,18 +75,34 @@ public class BioscannerBlockEntityRenderer implements BlockEntityRenderer<Biomet
 
         Random random = new Random();
 
+        if (Minecraft.getInstance().level == null) {
+            poseStack.popPose();
+            return;
+        }
+
         int tickspeed = Minecraft.getInstance().level.getGameRules().getInt(GameRules.RULE_RANDOMTICKING) * 8;
         if (Minecraft.getInstance().level.getGameTime() > last_tick || Minecraft.getInstance().level.getGameTime() < last_tick) {
             if (displayProfile == null || Minecraft.getInstance().level.getGameTime() % tickspeed == 0) {
-                Collection<PlayerInfo> playerInfos = Minecraft.getInstance().getConnection().getOnlinePlayers();
-                List<GameProfile> gameProfiles = new ArrayList<>();
+                var connection = Minecraft.getInstance().getConnection();
+                if (connection != null) {
+                    Collection<PlayerInfo> playerInfos = connection.getOnlinePlayers();
+                    List<GameProfile> gameProfiles = new ArrayList<>();
 
-                for (PlayerInfo playerInfo : playerInfos) {
-                    gameProfiles.add(playerInfo.getProfile());
+                    for (PlayerInfo playerInfo : playerInfos) {
+                        gameProfiles.add(playerInfo.getProfile());
+                    }
+                    if (!gameProfiles.isEmpty()) {
+                        displayProfile = gameProfiles.get(random.nextInt(gameProfiles.size()));
+                    }
                 }
-                displayProfile = gameProfiles.get(random.nextInt(gameProfiles.size()));
             }
         }
+
+        if (displayProfile == null) {
+            poseStack.popPose();
+            return;
+        }
+
         ResourceLocation texture = Minecraft.getInstance().getSkinManager().getInsecureSkin(displayProfile).texture();
 
         RenderSystem.setShaderTexture(0, texture); // Bind the texture

@@ -101,8 +101,7 @@ public class DoorBlock extends Block {
                                 // Search all dimensions for the TARDIS entity
                                 TardisEntity tardisEntity = null;
                                 for (ServerLevel cLevel : serverLevels) {
-                                    TardisEntity foundEntity = (TardisEntity) cLevel.getEntity(vortexInterfaceBlockEntity.getExtUUID());
-                                    if (foundEntity != null) {
+                                    if (cLevel.getEntity(vortexInterfaceBlockEntity.getExtUUID()) instanceof TardisEntity foundEntity) {
                                         tardisEntity = foundEntity;
                                         targetDimension = cLevel;
                                         break;

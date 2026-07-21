@@ -48,8 +48,9 @@ public record ServerboundAngelSeenPacket(UUID angelUuid, String fromDimension) i
             }
             if (level == null) return;
 
-            AngelEntity angelEntity = (AngelEntity) level.getEntity(this.angelUuid);
-            // TODO: implement "angel seen" behavior (packet was previously a no-op).
+            if (level.getEntity(this.angelUuid) instanceof AngelEntity) {
+                // TODO: implement "angel seen" behavior (packet was previously a no-op).
+            }
         });
     }
 }

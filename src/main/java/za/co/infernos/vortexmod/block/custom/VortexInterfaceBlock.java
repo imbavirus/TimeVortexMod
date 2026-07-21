@@ -320,8 +320,7 @@ public class VortexInterfaceBlock extends BaseEntityBlock {
                     // Search all dimensions for existing TardisEntity
                     Iterable<ServerLevel> allLevels = minecraftserver.getAllLevels();
                     for (ServerLevel level : allLevels) {
-                        TardisEntity existingTardis = (TardisEntity) level.getEntity(oldExtUUID);
-                        if (existingTardis != null) {
+                        if (level.getEntity(oldExtUUID) instanceof TardisEntity existingTardis) {
                             tardisMob = existingTardis;
                             // Update the existing TardisEntity's position if needed
                             if (tardisMob.level() != serverLevel) {
@@ -341,8 +340,8 @@ public class VortexInterfaceBlock extends BaseEntityBlock {
                         // Check if entity was already added (avoid duplicates)
                         if (serverLevel.getEntity(tardisMob.getUUID()) == null) {
                             serverLevel.addFreshEntity(tardisMob);
-                        } else {
-                            tardisMob = (TardisEntity) serverLevel.getEntity(tardisMob.getUUID());
+                        } else if (serverLevel.getEntity(tardisMob.getUUID()) instanceof TardisEntity existing) {
+                            tardisMob = existing;
                         }
                         tardisMob.setOwnerID(ownerCode);
                         interfaceBlockEntity.setExtUUID(tardisMob.getUUID());
@@ -385,6 +384,9 @@ public class VortexInterfaceBlock extends BaseEntityBlock {
     }
 
     private void handleLightningStrikes(Level pLevel, BlockPos targetPosition) {
+        if (pLevel.getServer() == null || pLevel.getServer().getConnection() == null) {
+            return;
+        }
         List<Connection> connectionList = pLevel.getServer().getConnection().getConnections();
         for (Connection pConnection : connectionList) {
             ClientboundAddEntityPacket entityPacket = new ClientboundAddEntityPacket(new LightningBolt(EntityType.LIGHTNING_BOLT, pLevel), 0, targetPosition);

@@ -1,23 +1,58 @@
 package za.co.infernos.vortexmod.events;
 
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.SpawnPlacements;
 import net.minecraft.world.entity.SpawnPlacementTypes;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.entity.RegisterSpawnPlacementsEvent;
 import za.co.infernos.vortexmod.VortexMod;
+import za.co.infernos.vortexmod.block.entity.ModBlockEntities;
 import za.co.infernos.vortexmod.entities.ModEntities;
 import za.co.infernos.vortexmod.entities.custom.*;
-import za.co.infernos.vortexmod.network.PacketHandler;
-import za.co.infernos.vortexmod.worldgen.ModWorldGen;
 
 @EventBusSubscriber(modid = VortexMod.MODID, bus = EventBusSubscriber.Bus.MOD)
 public class ModEventBusEvents {
+
+    @SubscribeEvent
+    public static void registerCapabilities(RegisterCapabilitiesEvent event) {
+        event.registerBlockEntity(
+                Capabilities.EnergyStorage.BLOCK,
+                ModBlockEntities.VORTEX_INTERFACE_BE.get(),
+                (be, side) -> be.getEnergy()
+        );
+
+        event.registerBlockEntity(
+                Capabilities.ItemHandler.BLOCK,
+                ModBlockEntities.SIZE_MANIPULATOR_BE.get(),
+                (be, side) -> be.itemHandler
+        );
+        event.registerBlockEntity(
+                Capabilities.ItemHandler.BLOCK,
+                ModBlockEntities.SCANNER_BE.get(),
+                (be, side) -> be.itemHandler
+        );
+        event.registerBlockEntity(
+                Capabilities.ItemHandler.BLOCK,
+                ModBlockEntities.TARDIS_KEYPAD_BE.get(),
+                (be, side) -> be.itemHandler
+        );
+
+        if (ModList.get().isLoaded("computercraft")) {
+            // Reflect so CC classes are not loaded when the mod is absent.
+            try {
+                Class.forName("za.co.infernos.vortexmod.compat.computercraft.CCCompat")
+                        .getMethod("registerCapabilities", RegisterCapabilitiesEvent.class)
+                        .invoke(null, event);
+            } catch (ReflectiveOperationException e) {
+                VortexMod.LOGGER.error("Failed to register ComputerCraft peripherals", e);
+            }
+        }
+    }
 
     @SubscribeEvent
     public static void registerAttributes(EntityAttributeCreationEvent event) {

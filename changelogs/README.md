@@ -11,6 +11,7 @@ This folder contains user-relevant changelogs for all versions since the NeoForg
 - [1.0.4](1.0.4.md) - Fixed KeypadScreen Crash
 - [1.0.5](1.0.5.md) - Fixed TARDIS Animation Timing
 - [1.0.6](1.0.6.md) - TARDIS Polish and Fixes
+- [1.0.7](1.0.7.md) - Capability Fixes and ComputerCraft Support
 
 ## Note
 

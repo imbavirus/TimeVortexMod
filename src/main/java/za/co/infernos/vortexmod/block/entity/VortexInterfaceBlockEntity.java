@@ -266,9 +266,7 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
         TardisEntity tardisEntity = null;
 
         for (ServerLevel cLevel : serverLevels) {
-            TardisEntity newTardisEntity = (TardisEntity) cLevel.getEntity(this.exterior_uuid);
-
-            if (newTardisEntity != null) {
+            if (cLevel.getEntity(this.exterior_uuid) instanceof TardisEntity newTardisEntity) {
                 tardisEntity = newTardisEntity;
             }
         }
@@ -313,9 +311,7 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
             TardisEntity tardisEntity = null;
 
             for (ServerLevel cLevel : serverLevels) {
-                TardisEntity newTardisEntity = (TardisEntity) cLevel.getEntity(this.exterior_uuid);
-
-                if (newTardisEntity != null) {
+                if (cLevel.getEntity(this.exterior_uuid) instanceof TardisEntity newTardisEntity) {
                     tardisEntity = newTardisEntity;
                 }
             }
@@ -526,9 +522,7 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
                     this.data.set(10, this.data.get(18));
                     this.data.set(18, 0);
                 }
-                TardisEntity newTardisEntity = (TardisEntity) cLevel.getEntity(this.exterior_uuid);
-
-                if (newTardisEntity != null) {
+                if (cLevel.getEntity(this.exterior_uuid) instanceof TardisEntity newTardisEntity) {
                     tardisEntity = newTardisEntity;
                 }
             }
@@ -537,7 +531,9 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
             HashMap<String, Integer> disruptorDataMap = disruptorMapData.getDataMap();
 
             if (tardisEntity == null) {
-                tardisEntity = (TardisEntity) currentDimension.getEntity(this.exterior_uuid);
+                if (currentDimension.getEntity(this.exterior_uuid) instanceof TardisEntity foundTardis) {
+                    tardisEntity = foundTardis;
+                }
             } else {
                 currentDimension = (ServerLevel) tardisEntity.level();
             }
@@ -2408,9 +2404,15 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
         return new BlockPos(newX, pPos.getY(), newZ);
     }
 
+    private static List<Connection> getServerConnections(Level pLevel) {
+        if (pLevel.getServer() == null || pLevel.getServer().getConnection() == null) {
+            return List.of();
+        }
+        return pLevel.getServer().getConnection().getConnections();
+    }
+
     private void handleLightningStrikes(Level pLevel, BlockPos targetPosition) {
-        List<Connection> connectionList = pLevel.getServer().getConnection().getConnections();
-        for (Connection pConnection : connectionList) {
+        for (Connection pConnection : getServerConnections(pLevel)) {
             if (pConnection.isConnected()) {
                 ClientboundAddEntityPacket entityPacket = new ClientboundAddEntityPacket(
                         new LightningBolt(EntityType.LIGHTNING_BOLT, pLevel), 0, targetPosition);
@@ -2423,8 +2425,7 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
     }
 
     private void handleFlightCenterParticles(Level pLevel, BlockPos pPos) {
-        List<Connection> connectionList = pLevel.getServer().getConnection().getConnections();
-        for (Connection pConnection : connectionList) {
+        for (Connection pConnection : getServerConnections(pLevel)) {
             if (pConnection.isConnected()) {
                 spawnFlightCenterCylinder(pConnection, pPos);
             }
@@ -2432,8 +2433,7 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
     }
 
     private void handleRematCenterParticles(Level pLevel, BlockPos pPos) {
-        List<Connection> connectionList = pLevel.getServer().getConnection().getConnections();
-        for (Connection pConnection : connectionList) {
+        for (Connection pConnection : getServerConnections(pLevel)) {
             if (pConnection.isConnected()) {
                 spawnRematCenterCylinder(pConnection, pPos);
             }
@@ -2441,8 +2441,7 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
     }
 
     private void handleDematCenterParticles(Level pLevel, BlockPos pPos) {
-        List<Connection> connectionList = pLevel.getServer().getConnection().getConnections();
-        for (Connection pConnection : connectionList) {
+        for (Connection pConnection : getServerConnections(pLevel)) {
             if (pConnection.isConnected()) {
                 spawnDematCenterCylinder(pConnection, pPos);
             }
@@ -2450,8 +2449,7 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
     }
 
     private void handleVortexParticles(int size, Level pLevel, BlockPos pPos, BlockPos targetPosition) {
-        List<Connection> connectionList = pLevel.getServer().getConnection().getConnections();
-        for (Connection pConnection : connectionList) {
+        for (Connection pConnection : getServerConnections(pLevel)) {
             if (pConnection.isConnected()) {
                 spawnVortexCylinder(pConnection, pPos, targetPosition, size, 100);
             }
@@ -2459,8 +2457,7 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
     }
 
     private void handleDematParticles(int size, AABB overrideAABB, Level pLevel, BlockPos pPos) {
-        List<Connection> connectionList = pLevel.getServer().getConnection().getConnections();
-        for (Connection pConnection : connectionList) {
+        for (Connection pConnection : getServerConnections(pLevel)) {
             if (pConnection.isConnected()) {
                 spawnDematSquare(pConnection, pPos, size, overrideAABB);
             }
@@ -2468,8 +2465,7 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
     }
 
     private void handleRematParticles(int size, AABB overrideAABB, Level pLevel, BlockPos pPos) {
-        List<Connection> connectionList = pLevel.getServer().getConnection().getConnections();
-        for (Connection pConnection : connectionList) {
+        for (Connection pConnection : getServerConnections(pLevel)) {
             if (pConnection.isConnected()) {
                 spawnRematSquare(pConnection, pPos, size, overrideAABB);
             }

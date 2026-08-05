@@ -17,6 +17,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.TicketType;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.damagesource.DamageSource;
@@ -47,6 +48,8 @@ import za.co.infernos.vortexmod.entities.ModEntities;
 import za.co.infernos.vortexmod.item.ModItems;
 import za.co.infernos.vortexmod.mapdata.LocationMapData;
 import za.co.infernos.vortexmod.mapdata.SecurityMapData;
+import za.co.infernos.vortexmod.sound.ModSounds;
+import za.co.infernos.vortexmod.util.FlightTimings;
 import za.co.infernos.vortexmod.worldgen.dimension.ModDimensions;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
@@ -439,17 +442,16 @@ public class TardisEntity extends Mob {
     @Override
     public void tick() {
         if (this.level() instanceof ServerLevel serverLevel) {
-            // Demat: 20 seconds (400 ticks) to match demat_sound.ogg
-            // Remat: 24 seconds (480 ticks) to match remat_sound.ogg
-            int DEMAT_TICKS = 400;
-            int REMAT_TICKS = 480;
+            // Locked to demat_sound.ogg / remat_sound.ogg (see FlightTimings)
+            final int dematTicks = FlightTimings.DEMAT_TICKS;
+            final int rematTicks = FlightTimings.REMAT_TICKS;
 
             if (this.entityData.get(DATA_DEMAT_ID)) {
                 int currentTicks = this.entityData.get(DATA_ANIM_STAGE_ID);
                 currentTicks++;
                 this.entityData.set(DATA_ANIM_STAGE_ID, currentTicks);
 
-                float progress = (float) currentTicks / DEMAT_TICKS;
+                float progress = (float) currentTicks / dematTicks;
                 
                 // Linear fade out with slight oscillation
                 float baseAlpha = 1.0f - progress;
@@ -460,16 +462,18 @@ public class TardisEntity extends Mob {
 
                 if (currentTicks % 20 == 0) {
                    VortexMod.LOGGER.info("TARDIS {} Demat Tick: {}/{} (Alpha={})", 
-                       this.getUUID(), currentTicks, DEMAT_TICKS, alpha);
+                       this.getUUID(), currentTicks, dematTicks, alpha);
                 }
                 
-                // Completion check
-                if (currentTicks >= DEMAT_TICKS) {
+                // Completion check — flight phase starts; play full flight_sound once
+                if (currentTicks >= dematTicks) {
                     VortexMod.LOGGER.info("TARDIS {} Demat Complete. Entering Flight.", this.getUUID());
                     this.entityData.set(DATA_ALPHA_ID, 0f);
                     this.entityData.set(DATA_DEMAT_ID, false);
                     this.entityData.set(DATA_IN_FLIGHT_ID, true);
                     this.entityData.set(DATA_ANIM_STAGE_ID, 0);
+                    serverLevel.playSeededSound(null, this.getX(), this.getY(), this.getZ(),
+                            ModSounds.FLIGHT_SOUND.get(), SoundSource.BLOCKS, 1f, 1f, 0);
                 }
             }
             if (this.entityData.get(DATA_REMAT_ID)) {
@@ -477,7 +481,7 @@ public class TardisEntity extends Mob {
                 currentTicks++;
                 this.entityData.set(DATA_ANIM_STAGE_ID, currentTicks);
 
-                float progress = (float) currentTicks / REMAT_TICKS;
+                float progress = (float) currentTicks / rematTicks;
 
                 // Fade in with oscillation (reverse of demat style)
                 float baseAlpha = progress;
@@ -488,11 +492,11 @@ public class TardisEntity extends Mob {
                 
                 if (currentTicks % 20 == 0) {
                     VortexMod.LOGGER.info("TARDIS {} Remat Tick: {}/{} (Alpha={})", 
-                        this.getUUID(), currentTicks, REMAT_TICKS, alpha);
+                        this.getUUID(), currentTicks, rematTicks, alpha);
                 }
                 
                 // Completion check
-                if (currentTicks >= REMAT_TICKS) {
+                if (currentTicks >= rematTicks) {
                     VortexMod.LOGGER.info("TARDIS {} Remat Complete.", this.getUUID());
                     this.entityData.set(DATA_ALPHA_ID, 1f);
                     this.entityData.set(DATA_REMAT_ID, false);

@@ -47,6 +47,7 @@ import za.co.infernos.vortexmod.entities.custom.TardisEntity;
 import za.co.infernos.vortexmod.mapdata.DisruptorMapData;
 import za.co.infernos.vortexmod.mapdata.LocationMapData;
 import za.co.infernos.vortexmod.sound.ModSounds;
+import za.co.infernos.vortexmod.util.FlightTimings;
 import za.co.infernos.vortexmod.util.ModEnergyStorage;
 import za.co.infernos.vortexmod.worldgen.dimension.ModDimensions;
 import org.checkerframework.checker.units.qual.C;
@@ -480,10 +481,24 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
         return this.data.get(20);
     }
 
+    /** Keep a chunk ticking so exterior demat/remat/flight anim cannot stall on unload. */
+    private static void forceChunkSafe(ServerLevel level, BlockPos pos) {
+        if (level == null || pos == null) {
+            return;
+        }
+        try {
+            ChunkPos chunkPos = new ChunkPos(pos);
+            VortexInterfaceBlock.getTicketController().forceChunk(
+                    level, pos, chunkPos.x, chunkPos.z, true, true);
+        } catch (Exception e) {
+            VortexMod.LOGGER.warn("Failed to force chunk at {} in {}: {}", pos, level.dimension().location(), e.getMessage());
+        }
+    }
+
     public void tick(Level pLevel, BlockPos pPos, BlockState pState) {
         if (!pLevel.isClientSide()) {
             MinecraftServer minecraftserver = pLevel.getServer();
-            int tickSpeed = 20;
+            final int tickSpeed = FlightTimings.TICKS_PER_SECOND;
             ServerLevel vortexDimension = minecraftserver.getLevel(ModDimensions.vortexDIM_LEVEL_KEY);
             ServerLevel tardisDimension = minecraftserver.getLevel(ModDimensions.tardisDIM_LEVEL_KEY);
             ServerLevel overworldDimension = minecraftserver.getLevel(Level.OVERWORLD);
@@ -939,33 +954,18 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
                 VortexMod.LOGGER.info("[TARDIS-PROTO] tick={}, last_tick={}, throttle_on={}, pLevel={}, exteriorPos={}, targetPos={}", 
                     this.data.get(0), this.data.get(1), throttle_on, pLevel.dimension().location(), exteriorPos, realTargetPos);
 
-                double dematSeconds = 10;
-                double minFlightSeconds = 15;
-                int estTime;
-                int remTime;
-
-                BlockPos estimatePos = exteriorPos;
-                int numEstJumps = 0;
-                while (Math.sqrt(estimatePos.distToCenterSqr(realTargetPos.getX(), estimatePos.getY(),
-                        realTargetPos.getZ())) > 250) {
-                    numEstJumps++;
-                    estimatePos = findNewVortexPosition(estimatePos, realTargetPos);
-                }
-
-                estTime = (5 * numEstJumps) + 20;
-
-                BlockPos remainingPos = pPos;
-                int numRemJumps = 0;
-                while (Math.sqrt(remainingPos.distToCenterSqr(realTargetPos.getX(), remainingPos.getY(),
-                        realTargetPos.getZ())) > 250) {
-                    numRemJumps++;
-                    remainingPos = findNewVortexPosition(remainingPos, realTargetPos);
-                }
-
-                remTime = (5 * numRemJumps);
-
-                if (this.data.get(0) < (tickSpeed * minFlightSeconds) + this.data.get(1)) {
-                    remTime += minFlightSeconds;
+                // Sound-locked base phases + capped soft distance scale (see FlightTimings)
+                final double dematSeconds = FlightTimings.DEMAT_SECONDS;
+                final double minFlightSeconds = FlightTimings.FLIGHT_SECONDS;
+                double horizEst = Math.sqrt(exteriorPos.distToCenterSqr(
+                        realTargetPos.getX(), exteriorPos.getY(), realTargetPos.getZ()));
+                double horizRem = Math.sqrt(pPos.distToCenterSqr(
+                        realTargetPos.getX(), pPos.getY(), realTargetPos.getZ()));
+                int estTime = (int) Math.ceil(
+                        dematSeconds + minFlightSeconds + FlightTimings.protoJumpExtraSeconds(horizEst));
+                int remTime = (int) Math.ceil(FlightTimings.protoJumpExtraSeconds(horizRem));
+                if (this.data.get(0) < FlightTimings.secondsToTicks(minFlightSeconds) + this.data.get(1)) {
+                    remTime += (int) Math.ceil(minFlightSeconds);
                 }
 
                 if (monitorBlockEntity != null) {
@@ -976,15 +976,17 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
                 this.data.set(20, remTime);
 
                 if (throttle_on == 1) {
+                    forceChunkSafe(currentDimension, exteriorPos);
+                    forceChunkSafe(targetDimension, realTargetPos);
                     VortexMod.LOGGER.info("[TARDIS-PROTO] Throttle ON - ticks={}, last_tick={}, dematThreshold={}, tickSpeed={}, isVortex={}",
-                        this.data.get(0), this.data.get(1), (dematSeconds * tickSpeed), tickSpeed, pLevel == vortexDimension);
+                        this.data.get(0), this.data.get(1), FlightTimings.DEMAT_TICKS, tickSpeed, pLevel == vortexDimension);
                     this.energy.removeEnergy(1);
                     if (monitorBlockEntity != null) {
                         monitorBlockEntity.data.set(5, remTime);
                     }
 
                     this.data.set(21, 15);
-                    if (this.data.get(0) > this.data.get(1) + (dematSeconds * tickSpeed) && pLevel != vortexDimension) {
+                    if (this.data.get(0) > this.data.get(1) + FlightTimings.DEMAT_TICKS && pLevel != vortexDimension) {
                         VortexMod.LOGGER.info("[TARDIS-PROTO] DEMAT THRESHOLD REACHED - teleporting to vortex dimension");
                         BlockPos vortexTargetPos = findNewVortexPosition(pPos, realTargetPos);
                         vortexTargetPos = new BlockPos(vortexTargetPos.getX(), -100, vortexTargetPos.getZ());
@@ -1016,9 +1018,9 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
                                 vortexTargetPos.getZ(), ModSounds.FLIGHT_SOUND.get(), SoundSource.BLOCKS, 1f, 1f, 0);
                     } else if (pLevel == vortexDimension
                             && Math.sqrt(pPos.distToCenterSqr(targetX, pPos.getY(), targetZ)) <= 250
-                            && this.data.get(0) >= (tickSpeed * minFlightSeconds) + this.data.get(1)) {
+                            && this.data.get(0) >= FlightTimings.FLIGHT_TICKS + this.data.get(1)) {
                         VortexMod.LOGGER.info("[TARDIS-PROTO] LANDING CONDITION MET - distance={}, minFlightTicks={}", 
-                            Math.sqrt(pPos.distToCenterSqr(targetX, pPos.getY(), targetZ)), (tickSpeed * minFlightSeconds));
+                            Math.sqrt(pPos.distToCenterSqr(targetX, pPos.getY(), targetZ)), FlightTimings.FLIGHT_TICKS);
                         BlockPos flight_target = new BlockPos(targetX, targetY, targetZ);
                         this.data.set(1, this.data.get(0));
                         this.data.set(11, 0);
@@ -1146,36 +1148,34 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
 
                     BlockPos exteriorPos = new BlockPos(this.data.get(6), this.data.get(7), this.data.get(8));
 
-                    double flight_seconds = 10; // Fixed flight time
-                    double demat_seconds = 20;  // Matches demat sound
-                    double demat_time = tickSpeed * demat_seconds;
-                    double ticks_to_travel = (flight_seconds + demat_seconds) * tickSpeed;
-                    
-                    if (ticks_to_travel < 0) {
-                        ticks_to_travel = 0;
-                    }
-                    double time_remaining = ((this.data.get(1) + ticks_to_travel) - this.data.get(0)) / tickSpeed;
+                    // Sound-locked: demat + flight until ready-to-land (remat is separate, after throttle off)
+                    final int demat_time = FlightTimings.DEMAT_TICKS;
+                    final int ticks_to_travel = FlightTimings.READY_TO_LAND_TICKS;
+                    double time_remaining = ((this.data.get(1) + ticks_to_travel) - this.data.get(0))
+                            / (double) tickSpeed;
                     if (time_remaining < 0) {
                         time_remaining = 0;
                     }
 
                     if (monitorBlockEntity != null) {
-                        monitorBlockEntity.data.set(4, (int) (ticks_to_travel / tickSpeed));
-                        monitorBlockEntity.data.set(10, (int) ticks_to_travel);
+                        monitorBlockEntity.data.set(4, (int) Math.ceil(ticks_to_travel / (double) tickSpeed));
+                        monitorBlockEntity.data.set(10, ticks_to_travel);
                     }
                     
-                    // Check target chunk loading
-                    boolean target_loaded = false;
-                    ChunkPos targetChunkPos = new ChunkPos(target);
-                    if (targetDimension.getChunkSource().hasChunk(targetChunkPos.x, targetChunkPos.z)) {
-                        target_loaded = true;
-                    } else {
-                        // Force load if not loaded
-                        try {
-                            VortexInterfaceBlock.getTicketController().forceChunk(targetDimension, target, targetChunkPos.x, targetChunkPos.z, true, true);
-                        } catch (Exception e) {
-                            VortexMod.LOGGER.warn("Failed to force load target chunk: {}", e.getMessage());
-                        }
+                    // Destination must be simulation-loaded before ready-to-land / auto-land
+                    forceChunkSafe(targetDimension, target);
+                    boolean target_loaded = targetDimension.getChunkSource()
+                            .hasChunk(new ChunkPos(target).x, new ChunkPos(target).z);
+                    if (!target_loaded && this.ticks % 40 == 0) {
+                        VortexMod.LOGGER.info(
+                                "Interface: waiting on target chunk {} in {} (forceChunk issued)",
+                                new ChunkPos(target), targetDimension.dimension().location());
+                    }
+
+                    // Keep exterior ticking for demat/remat/flight fades (avoids stall when no players nearby)
+                    if (throttle_on == 1 || tardisEntity.isDemat() || tardisEntity.isRemat()
+                            || tardisEntity.isInFlight()) {
+                        forceChunkSafe(currentDimension, exteriorPos);
                     }
 
                     if (throttle_on == 1) {
@@ -1198,6 +1198,7 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
                             this.data.set(21, 15);
                             this.energy.removeEnergy(1);
                             tardisEntity.setInFlight(false);
+                            forceChunkSafe(currentDimension, exteriorPos);
                             handleDematCenterParticles(tardisDimension, pPos);
                             // handleEucDematParticles(currentDimension, exteriorPos);
                             for (int x = -size; x <= size; x++) {
@@ -1254,11 +1255,13 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
                                 VortexMod.LOGGER.warn("Failed to force chunk: {}", e.getMessage());
                             }
 
+                            forceChunkSafe(currentDimension, exteriorPos);
                             tardisEntity.teleportToWithTicket(currentDimension, exteriorPos.getX() + 0.5, -128.0,
                                     exteriorPos.getZ() + 0.5, tardisEntity.getYRot(), tardisEntity.getXRot());
+                            // Mid-flight ambient blip ≈ euc_flight_sound length (not total flight budget)
                             if (this.data.get(0) >= this.data.get(1) + demat_time + 1
                                     && (this.data.get(0) - (this.data.get(1) + demat_time) > 0)) {
-                                if (this.data.get(0) >= this.data.get(22) + (tickSpeed * 1.35)) {
+                                if (this.data.get(0) >= this.data.get(22) + FlightTimings.EUC_FLIGHT_BLIP_TICKS) {
                                     pLevel.playSeededSound(null, pPos.getX(), pPos.getY(), pPos.getZ(),
                                             ModSounds.EUC_FLIGHT_SOUND.get(), SoundSource.BLOCKS, 1f, 1f, 0);
                                     this.data.set(22, this.data.get(0));
@@ -1312,8 +1315,17 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
                                     return;
                                 }
                                 this.data.set(1, this.data.get(0));
+                                this.data.set(11, 0); // allow remat sound once per trip
+                                forceChunkSafe(currentDimension, exteriorPos);
+                                forceChunkSafe(targetDimension, target);
                                 tardisEntity.setDemat(true);
-                                VortexMod.LOGGER.info("Interface: Triggering Dematerialization for {}", tardisEntity.getUUID());
+                                VortexMod.LOGGER.info(
+                                        "Interface: Demat start uuid={} demat={} flight={} remat={} readyTicks={}",
+                                        tardisEntity.getUUID(),
+                                        FlightTimings.DEMAT_TICKS,
+                                        FlightTimings.FLIGHT_TICKS,
+                                        FlightTimings.REMAT_TICKS,
+                                        FlightTimings.READY_TO_LAND_TICKS);
                                 currentDimension.playSeededSound(null, exteriorPos.getX(), exteriorPos.getY(),
                                         exteriorPos.getZ(), ModSounds.DEMAT_SOUND.get(), SoundSource.BLOCKS, 1f, 1f, 0);
                                 pLevel.playSeededSound(null, pPos.getX(), pPos.getY(), pPos.getZ(),
@@ -1393,7 +1405,10 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
                                 this.data.set(11, 1);
 
                                 tardisEntity.setRemat(true);
-                                VortexMod.LOGGER.info("Interface: Triggering Rematerialization for {}", tardisEntity.getUUID());
+                                forceChunkSafe(targetDimension, new BlockPos(targetX, targetY, targetZ));
+                                VortexMod.LOGGER.info(
+                                        "Interface: Remat start uuid={} rematTicks={}",
+                                        tardisEntity.getUUID(), FlightTimings.REMAT_TICKS);
 
                                 targetDimension.playSeededSound(null, targetX, targetY, targetZ,
                                         ModSounds.REMAT_SOUND.get(), SoundSource.BLOCKS, 1f, 1f, 0);

@@ -74,6 +74,14 @@ public class TardisEntity extends Mob {
     private static final EntityDataAccessor<Integer> DATA_ROTATION_ID = SynchedEntityData.defineId(TardisEntity.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<String> DATA_SIGN_ID = SynchedEntityData.defineId(TardisEntity.class, EntityDataSerializers.STRING);
 
+    /**
+     * Game-time when the current demat/remat phase started. Anim progress is derived from
+     * {@code level.getGameTime() - phaseStartGameTime} so incomplete entity ticking (chunk
+     * unload / far exterior) cannot stretch a 20s fade into minutes.
+     */
+    private long phaseStartGameTime = -1L;
+    private int lastLoggedStage = -1;
+
     public TardisEntity(EntityType<? extends Mob> pEntityType, Level pLevel) {
         super(pEntityType, pLevel);
     }
@@ -176,16 +184,101 @@ public class TardisEntity extends Mob {
     public void setDemat(boolean demat) {
         VortexMod.LOGGER.info("[TARDIS-Entity] setDemat({}) called for UUID={}", demat, this.getUUID());
         this.entityData.set(DATA_DEMAT_ID, demat);
-        if (this.entityData.get(DATA_DEMAT_ID)) {
+        if (demat) {
             this.entityData.set(DATA_REMAT_ID, false);
+            this.entityData.set(DATA_ANIM_STAGE_ID, 0);
+            this.entityData.set(DATA_IN_FLIGHT_ID, false);
+            this.phaseStartGameTime = this.level() instanceof ServerLevel sl ? sl.getGameTime() : -1L;
+            this.lastLoggedStage = -1;
+        } else if (!this.entityData.get(DATA_REMAT_ID)) {
+            this.phaseStartGameTime = -1L;
         }
     }
 
     public void setRemat(boolean remat) {
         VortexMod.LOGGER.info("[TARDIS-Entity] setRemat({}) called for UUID={}", remat, this.getUUID());
         this.entityData.set(DATA_REMAT_ID, remat);
-        if (this.entityData.get(DATA_REMAT_ID)) {
+        if (remat) {
             this.entityData.set(DATA_DEMAT_ID, false);
+            this.entityData.set(DATA_ANIM_STAGE_ID, 0);
+            this.entityData.set(DATA_IN_FLIGHT_ID, false);
+            this.phaseStartGameTime = this.level() instanceof ServerLevel sl ? sl.getGameTime() : -1L;
+            this.lastLoggedStage = -1;
+        } else if (!this.entityData.get(DATA_DEMAT_ID)) {
+            this.phaseStartGameTime = -1L;
+        }
+    }
+
+    /**
+     * Advance demat/remat using server game time (idempotent). Safe to call from the
+     * interface block entity every tick even when this entity is not ticking.
+     */
+    public void syncFlightAnimToGameTime() {
+        if (!(this.level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        final int dematTicks = FlightTimings.DEMAT_TICKS;
+        final int rematTicks = FlightTimings.REMAT_TICKS;
+
+        if (this.entityData.get(DATA_DEMAT_ID)) {
+            if (this.phaseStartGameTime < 0L) {
+                this.phaseStartGameTime = serverLevel.getGameTime();
+            }
+            int stage = (int) Math.min(dematTicks, Math.max(0L, serverLevel.getGameTime() - this.phaseStartGameTime));
+            this.entityData.set(DATA_ANIM_STAGE_ID, stage);
+            float progress = dematTicks <= 0 ? 1f : (float) stage / (float) dematTicks;
+            float baseAlpha = 1.0f - progress;
+            float oscillation = (float) Math.sin(progress * Math.PI * 10) * 0.1f * (1 - progress);
+            float alpha = Math.max(0f, Math.min(1f, baseAlpha + oscillation));
+            this.entityData.set(DATA_ALPHA_ID, alpha);
+
+            if (stage > 0 && stage % 20 == 0 && stage != this.lastLoggedStage) {
+                this.lastLoggedStage = stage;
+                VortexMod.LOGGER.info("TARDIS {} Demat Tick: {}/{} (Alpha={}, wall-clock)",
+                        this.getUUID(), stage, dematTicks, alpha);
+            }
+            if (stage >= dematTicks) {
+                VortexMod.LOGGER.info("TARDIS {} Demat Complete. Entering Flight. (wall-clock {} ticks)",
+                        this.getUUID(), dematTicks);
+                this.entityData.set(DATA_ALPHA_ID, 0f);
+                this.entityData.set(DATA_DEMAT_ID, false);
+                this.entityData.set(DATA_IN_FLIGHT_ID, true);
+                this.entityData.set(DATA_ANIM_STAGE_ID, 0);
+                this.phaseStartGameTime = -1L;
+                this.lastLoggedStage = -1;
+                serverLevel.playSeededSound(null, this.getX(), this.getY(), this.getZ(),
+                        ModSounds.FLIGHT_SOUND.get(), SoundSource.BLOCKS, 1f, 1f, 0);
+            }
+            return;
+        }
+
+        if (this.entityData.get(DATA_REMAT_ID)) {
+            if (this.phaseStartGameTime < 0L) {
+                this.phaseStartGameTime = serverLevel.getGameTime();
+            }
+            int stage = (int) Math.min(rematTicks, Math.max(0L, serverLevel.getGameTime() - this.phaseStartGameTime));
+            this.entityData.set(DATA_ANIM_STAGE_ID, stage);
+            float progress = rematTicks <= 0 ? 1f : (float) stage / (float) rematTicks;
+            float baseAlpha = progress;
+            float oscillation = (float) Math.sin(progress * Math.PI * 10) * 0.1f * progress;
+            float alpha = Math.max(0f, Math.min(1f, baseAlpha + oscillation));
+            this.entityData.set(DATA_ALPHA_ID, alpha);
+
+            if (stage > 0 && stage % 20 == 0 && stage != this.lastLoggedStage) {
+                this.lastLoggedStage = stage;
+                VortexMod.LOGGER.info("TARDIS {} Remat Tick: {}/{} (Alpha={}, wall-clock)",
+                        this.getUUID(), stage, rematTicks, alpha);
+            }
+            if (stage >= rematTicks) {
+                VortexMod.LOGGER.info("TARDIS {} Remat Complete. (wall-clock {} ticks)",
+                        this.getUUID(), rematTicks);
+                this.entityData.set(DATA_ALPHA_ID, 1f);
+                this.entityData.set(DATA_REMAT_ID, false);
+                this.entityData.set(DATA_ANIM_STAGE_ID, 0);
+                this.entityData.set(DATA_IN_FLIGHT_ID, false);
+                this.phaseStartGameTime = -1L;
+                this.lastLoggedStage = -1;
+            }
         }
     }
 
@@ -441,84 +534,17 @@ public class TardisEntity extends Mob {
 
     @Override
     public void tick() {
-        if (this.level() instanceof ServerLevel serverLevel) {
-            // Locked to demat_sound.ogg / remat_sound.ogg (see FlightTimings)
-            final int dematTicks = FlightTimings.DEMAT_TICKS;
-            final int rematTicks = FlightTimings.REMAT_TICKS;
-
-            if (this.entityData.get(DATA_DEMAT_ID)) {
-                int currentTicks = this.entityData.get(DATA_ANIM_STAGE_ID);
-                currentTicks++;
-                this.entityData.set(DATA_ANIM_STAGE_ID, currentTicks);
-
-                float progress = (float) currentTicks / dematTicks;
-                
-                // Linear fade out with slight oscillation
-                float baseAlpha = 1.0f - progress;
-                float oscillation = (float) Math.sin(progress * Math.PI * 10) * 0.1f * (1 - progress);
-                float alpha = Math.max(0f, Math.min(1f, baseAlpha + oscillation));
-                
-                this.entityData.set(DATA_ALPHA_ID, alpha);
-
-                if (currentTicks % 20 == 0) {
-                   VortexMod.LOGGER.info("TARDIS {} Demat Tick: {}/{} (Alpha={})", 
-                       this.getUUID(), currentTicks, dematTicks, alpha);
-                }
-                
-                // Completion check — flight phase starts; play full flight_sound once
-                if (currentTicks >= dematTicks) {
-                    VortexMod.LOGGER.info("TARDIS {} Demat Complete. Entering Flight.", this.getUUID());
-                    this.entityData.set(DATA_ALPHA_ID, 0f);
-                    this.entityData.set(DATA_DEMAT_ID, false);
-                    this.entityData.set(DATA_IN_FLIGHT_ID, true);
-                    this.entityData.set(DATA_ANIM_STAGE_ID, 0);
-                    serverLevel.playSeededSound(null, this.getX(), this.getY(), this.getZ(),
-                            ModSounds.FLIGHT_SOUND.get(), SoundSource.BLOCKS, 1f, 1f, 0);
-                }
-            }
-            if (this.entityData.get(DATA_REMAT_ID)) {
-                int currentTicks = this.entityData.get(DATA_ANIM_STAGE_ID);
-                currentTicks++;
-                this.entityData.set(DATA_ANIM_STAGE_ID, currentTicks);
-
-                float progress = (float) currentTicks / rematTicks;
-
-                // Fade in with oscillation (reverse of demat style)
-                float baseAlpha = progress;
-                float oscillation = (float) Math.sin(progress * Math.PI * 10) * 0.1f * progress;
-                float alpha = Math.max(0f, Math.min(1f, baseAlpha + oscillation));
-
-                this.entityData.set(DATA_ALPHA_ID, alpha);
-                
-                if (currentTicks % 20 == 0) {
-                    VortexMod.LOGGER.info("TARDIS {} Remat Tick: {}/{} (Alpha={})", 
-                        this.getUUID(), currentTicks, rematTicks, alpha);
-                }
-                
-                // Completion check
-                if (currentTicks >= rematTicks) {
-                    VortexMod.LOGGER.info("TARDIS {} Remat Complete.", this.getUUID());
-                    this.entityData.set(DATA_ALPHA_ID, 1f);
-                    this.entityData.set(DATA_REMAT_ID, false);
-                    this.entityData.set(DATA_ANIM_STAGE_ID, 0);
-                }
-            }
+        if (this.level() instanceof ServerLevel) {
+            // Wall-clock demat/remat (also driven from VortexInterfaceBlockEntity)
+            this.syncFlightAnimToGameTime();
 
             this.entityData.set(DATA_LEVEL_ID, this.level().dimension().toString());
             this.entityData.set(DATA_TARGET_X_ID, (float) this.position().x);
             this.entityData.set(DATA_TARGET_Y_ID, (float) this.position().y);
             this.entityData.set(DATA_TARGET_Z_ID, (float) this.position().z);
             this.entityData.set(DATA_ROTATION_ID, (int) this.getYRot());
-            if (this.getAlpha() >= 1) {
-                if (this.entityData.get(DATA_IN_FLIGHT_ID)) {
-                     VortexMod.LOGGER.info("TARDIS {} Forced Flight End (Alpha >= 1).", this.getUUID());
-                }
-                this.entityData.set(DATA_IN_FLIGHT_ID, false);
-            }
-        }
-        else if (this.level() instanceof ClientLevel clientLevel) {
-            // Client-side entity position is handled by vanilla entity tracking.
-            // Manual moveTo() calls caused issues with animation interpolation.
+            // Do NOT force-end flight when alpha>=1 — remat sets alpha to 1 at completion;
+            // the old check aborted mid-flight whenever alpha was full.
         }
 
         super.tick();

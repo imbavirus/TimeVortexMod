@@ -1172,10 +1172,16 @@ public class VortexInterfaceBlockEntity extends BlockEntity {
                                 new ChunkPos(target), targetDimension.dimension().location());
                     }
 
-                    // Keep exterior ticking for demat/remat/flight fades (avoids stall when no players nearby)
+                    // Keep exterior chunks loaded + drive demat/remat off wall-clock even if
+                    // the exterior entity itself is not ticking every server tick.
                     if (throttle_on == 1 || tardisEntity.isDemat() || tardisEntity.isRemat()
                             || tardisEntity.isInFlight()) {
                         forceChunkSafe(currentDimension, exteriorPos);
+                        if (tardisEntity.isDemat() || tardisEntity.isRemat()) {
+                            forceChunkSafe(currentDimension,
+                                    BlockPos.containing(tardisEntity.getX(), tardisEntity.getY(), tardisEntity.getZ()));
+                            tardisEntity.syncFlightAnimToGameTime();
+                        }
                     }
 
                     if (throttle_on == 1) {

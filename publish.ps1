@@ -308,8 +308,17 @@ function Build-Mod() {
   
   # Use gradlew if available, otherwise try gradle
   $gradleCmd = if (Test-Path "gradlew.bat") { ".\gradlew.bat" } elseif (Test-Path "gradlew") { ".\gradlew" } else { "gradle" }
-  
-  & $gradleCmd clean build
+
+  # Separate clean + build. Combined `clean build` races with NeoGradle configuration-cache:
+  # clean deletes AT extract paths while neoFormTransformSource still opens them
+  # (NoSuchFileException: .../ats/accesstransformer.cfg).
+  Write-Host "  clean..."
+  & $gradleCmd clean --no-configuration-cache
+  if ($LASTEXITCODE -ne 0) {
+    throw "Gradle clean failed"
+  }
+  Write-Host "  build..."
+  & $gradleCmd build --no-configuration-cache
   if ($LASTEXITCODE -ne 0) {
     throw "Gradle build failed"
   }
